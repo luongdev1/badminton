@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RallyTeam — Quản lý đội cầu lông",
+  title: "Hà Đông Badminton Club",
   description: "Quản lý buổi đánh, thành viên và chi phí đội cầu lông.",
 };
 
