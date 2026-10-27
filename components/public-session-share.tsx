@@ -12,7 +12,7 @@ import { publicSessionShareSchema } from "@/lib/validation";
 type ShareData = Infer<typeof publicSessionShareSchema>;
 const SHARE_TOKEN_STORAGE_KEY = "rallyteam.public-share-token";
 
-export function PublicSessionShare() {
+export function PublicSessionShare({ initialToken }: { initialToken?: string }) {
   const [token, setToken] = useState<string | null>(null);
   const [share, setShare] = useState<ShareData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,13 +63,18 @@ export function PublicSessionShare() {
   useEffect(() => {
     const hasFragment = window.location.hash.length > 1;
     const fragmentToken = window.location.hash.slice(1);
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    if (hasFragment && !/^[A-Za-z0-9_-]{43}$/.test(fragmentToken)) {
+    window.history.replaceState(null, "", "/share");
+    if (initialToken && !/^[A-Za-z0-9_-]{43}$/.test(initialToken)) {
       setMessage("Liên kết chia sẻ không hợp lệ hoặc đã bị thu hồi.");
       setLoading(false);
       return;
     }
-    const shareToken = hasFragment ? fragmentToken : window.sessionStorage.getItem(SHARE_TOKEN_STORAGE_KEY);
+    if (!initialToken && hasFragment && !/^[A-Za-z0-9_-]{43}$/.test(fragmentToken)) {
+      setMessage("Liên kết chia sẻ không hợp lệ hoặc đã bị thu hồi.");
+      setLoading(false);
+      return;
+    }
+    const shareToken = initialToken ?? (hasFragment ? fragmentToken : window.sessionStorage.getItem(SHARE_TOKEN_STORAGE_KEY));
     if (!shareToken || !/^[A-Za-z0-9_-]{43}$/.test(shareToken)) {
       setMessage("Liên kết chia sẻ không hợp lệ hoặc đã bị thu hồi.");
       setLoading(false);
@@ -84,7 +89,7 @@ export function PublicSessionShare() {
       });
     }, 15000);
     return () => window.clearInterval(interval);
-  }, [loadShare]);
+  }, [initialToken, loadShare]);
 
   async function togglePayment(paymentId: string, paid: boolean) {
     if (!token) return;

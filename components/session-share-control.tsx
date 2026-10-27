@@ -31,7 +31,7 @@ export function SessionShareControl({ sessionId, initialShareEnabled }: { sessio
   async function copyLink() {
     if (!newToken) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/share#${newToken}`);
+      await navigator.clipboard.writeText(`${window.location.origin}/share/${newToken}`);
       setMessage("Đã sao chép liên kết chia sẻ.");
     } catch {
       setMessage("Không thể sao chép liên kết. Hãy kiểm tra quyền clipboard của trình duyệt.");

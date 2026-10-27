@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Activity, CalendarDays, CircleHelp, LayoutDashboard, Menu, Settings2, UsersRound, X } from "lucide-react";
-import { signOutAdmin } from "@/app/admin/login/actions";
+import { signOutAdmin } from "@/app/login/actions";
 
 const navItems = [
   { label: "Tổng quan", href: "/", icon: LayoutDashboard },
@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const activeItem = navItems.find((item) => item.href === pathname || (item.href !== "/" && pathname.startsWith(item.href)));
 
-  if (pathname === "/admin/login") {
+  if (pathname === "/login") {
     return <main className="min-h-screen bg-[#f7f9f7] px-4 py-8">{children}</main>;
   }
   if (pathname === "/share" || pathname.startsWith("/share/")) {

@@ -35,7 +35,7 @@ export async function updateTeamSettings(formData: FormData) {
     return { ok: false as const, message: "Ảnh QR không được vượt quá 5 MB." };
   }
 
-  const { supabase, team, userId } = await requireAdminContext();
+  const { supabase, team } = await requireAdminContext();
   let nextQrPath = team.qr_storage_path;
   let uploadedPath: string | null = null;
 
@@ -69,7 +69,6 @@ export async function updateTeamSettings(formData: FormData) {
       qr_storage_path: nextQrPath,
     })
     .eq("id", team.id)
-    .eq("admin_user_id", userId)
     .select("id")
     .maybeSingle();
 

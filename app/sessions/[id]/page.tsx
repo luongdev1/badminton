@@ -8,14 +8,14 @@ import { CloseSessionButton } from "@/components/close-session-button";
 import { Badge, Card, PageHeading } from "@/components/ui";
 import { longDate, money } from "@/lib/format";
 import { getSessionDetail, getTeamSettings } from "@/lib/supabase/data";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabasePublicServerClient } from "@/lib/supabase/public-server";
 
 export default async function SessionDetailPage({ params }: { params: { id: string } }) {
   const [detail, settings] = await Promise.all([getSessionDetail(params.id), getTeamSettings()]);
   if (!detail) notFound();
   const { session, participants, expenses, expectedVnd, collectedVnd, outstandingVnd, expensesVnd, unallocatedVnd } = detail;
   const activeParticipants = participants.filter((participant) => participant.status !== "declined");
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicServerClient();
   const qrImageUrl = settings.qr_storage_path
     ? settings.qr_storage_path.startsWith("https://")
       ? settings.qr_storage_path

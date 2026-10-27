@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabasePublicServerClient } from "@/lib/supabase/public-server";
 import { hashPublicShareToken } from "@/lib/public-share-token";
 import {
   publicSessionShareSchema,
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     return json({ error: parsed.error.issues[0]?.message ?? "Yêu cầu không hợp lệ." }, 400);
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabasePublicServerClient();
   const tokenHash = hashPublicShareToken(parsed.data.token);
 
   if (parsed.data.action === "read") {

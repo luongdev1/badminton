@@ -196,6 +196,14 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      consume_admin_login_attempt: {
+        Args: { p_key_hash: string };
+        Returns: Json;
+      };
+      clear_admin_login_attempts: {
+        Args: { p_key_hash: string };
+        Returns: undefined;
+      };
       get_public_session_share: {
         Args: { p_token_hash: string };
         Returns: Json;

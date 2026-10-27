@@ -1,6 +1,6 @@
 import { TeamSettingsForm } from "@/components/team-settings-form";
 import { getTeamSettings } from "@/lib/supabase/data";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabasePublicServerClient } from "@/lib/supabase/public-server";
 
 export default async function SettingsPage() {
   const settings = await getTeamSettings();
@@ -8,7 +8,7 @@ export default async function SettingsPage() {
   if (settings.qr_storage_path) {
     qrImageUrl = settings.qr_storage_path.startsWith("https://")
       ? settings.qr_storage_path
-      : (await createSupabaseServerClient()).storage.from("team-bank-qr").getPublicUrl(settings.qr_storage_path).data.publicUrl;
+      : createSupabasePublicServerClient().storage.from("team-bank-qr").getPublicUrl(settings.qr_storage_path).data.publicUrl;
   }
   return <TeamSettingsForm settings={settings} qrImageUrl={qrImageUrl} />;
 }

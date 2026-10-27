@@ -52,9 +52,10 @@ export const expenseIdSchema = z.object({
   session_id: z.string().uuid("Buổi đánh không hợp lệ."),
 });
 
-export const adminEmailSchema = z.object({
-  email: z.string().trim().email("Vui lòng nhập địa chỉ email hợp lệ."),
-});
+export const adminLoginSchema = z.object({
+  username: z.string().trim().min(3, "Tên đăng nhập phải có ít nhất 3 ký tự.").max(64, "Tên đăng nhập quá dài."),
+  password: z.string().min(12, "Mật khẩu phải có ít nhất 12 ký tự.").max(256, "Mật khẩu quá dài."),
+}).strict();
 
 export const teamSettingsSchema = z.object({
   team_name: z.string().trim().min(1, "Tên đội không được để trống.").max(120),

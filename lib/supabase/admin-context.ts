@@ -1,13 +1,14 @@
 import "server-only";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { ADMIN_SESSION_COOKIE, verifyAdminSessionToken } from "@/lib/admin-session";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type AdminContext = {
   supabase: SupabaseClient<Database>;
-  userId: string;
   team: {
     id: string;
     team_name: string;
@@ -24,27 +25,27 @@ export type AdminContext = {
 };
 
 export async function requireAdminContext(): Promise<AdminContext> {
-  const supabase = await createSupabaseServerClient();
-  const { data: authData, error: authError } = await supabase.auth.getClaims();
+  const cookieStore = await cookies();
+  const sessionIsValid = await verifyAdminSessionToken(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
+  if (!sessionIsValid) redirect("/login");
 
-  if (authError || !authData?.claims?.sub) {
-    redirect("/admin/login");
-  }
-  const userId = authData.claims.sub;
-
-  const { data: team, error: teamError } = await supabase
+  const supabase = createSupabaseAdminClient();
+  const { data: teams, error: teamError } = await supabase
     .from("team_settings")
     .select("*")
-    .eq("admin_user_id", userId)
-    .maybeSingle();
+    .limit(2);
 
   if (teamError) {
-    throw new Error(`Could not load the administrator's team: ${teamError.message}`);
+    throw new Error(`Could not load the administrator team: ${teamError.message}`);
   }
+
+  if (!teams?.length) redirect("/admin/setup");
+  if (teams.length > 1) throw new Error("Shared administrator credentials require exactly one configured team.");
+  const team = teams[0];
 
   if (!team) {
     redirect("/admin/setup");
   }
 
-  return { supabase, userId, team };
+  return { supabase, team };
 }
