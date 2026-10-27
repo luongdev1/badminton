@@ -16,6 +16,13 @@ const rateLimitResultSchema = z.object({
   retry_after_seconds: z.number().int().nonnegative(),
 }).strict();
 
+function logSupabaseLoginError(operation: string, error: { code?: string; message?: string }) {
+  console.error(`[admin-login] Supabase ${operation} failed`, {
+    code: error.code,
+    message: error.message,
+  });
+}
+
 export async function loginAdmin(input: unknown): Promise<AdminLoginResult> {
   const parsed = adminLoginSchema.safeParse(input);
   if (!parsed.success) {
@@ -31,7 +38,11 @@ export async function loginAdmin(input: unknown): Promise<AdminLoginResult> {
   let supabase;
   try {
     supabase = createSupabaseAdminClient();
-  } catch {
+  } catch (error) {
+    console.error(
+      "[admin-login] Could not create Supabase admin client",
+      error instanceof Error ? error.message : "Unknown error",
+    );
     return { ok: false, message: "Chưa cấu hình đầy đủ thông tin xác thực phía server." };
   }
 
@@ -39,7 +50,11 @@ export async function loginAdmin(input: unknown): Promise<AdminLoginResult> {
     p_key_hash: keyHash,
   });
   if (rateLimitError) {
-    return { ok: false, message: "Không thể kiểm tra giới hạn đăng nhập. Hãy thử lại sau." };
+    logSupabaseLoginError("consume_admin_login_attempt", rateLimitError);
+    return {
+      ok: false,
+      message: "Không thể kiểm tra giới hạn đăng nhập. Hãy kiểm tra cấu hình Supabase và migration đăng nhập.",
+    };
   }
   const rateLimit = rateLimitResultSchema.safeParse(rateLimitData);
   if (!rateLimit.success) {
@@ -62,6 +77,7 @@ export async function loginAdmin(input: unknown): Promise<AdminLoginResult> {
 
   const { error: clearError } = await supabase.rpc("clear_admin_login_attempts", { p_key_hash: keyHash });
   if (clearError) {
+    logSupabaseLoginError("clear_admin_login_attempts", clearError);
     return { ok: false, message: "Không thể hoàn tất đăng nhập an toàn. Hãy thử lại sau." };
   }
 
