@@ -41,6 +41,10 @@ export const expenseInputSchema = z.object({
   description: z.string().trim().min(1, "Vui lòng nhập nội dung khoản chi.").max(200),
   category: z.enum(["court", "shuttlecock", "equipment", "other"]),
   amount_vnd: z.number().int("Số tiền phải là số nguyên VND.").positive("Số tiền phải lớn hơn 0.").max(MAX_VND),
+  participant_ids: z.array(z.string().uuid("Mã thành viên không hợp lệ."))
+    .min(1, "Chọn ít nhất một người để chia khoản chi.")
+    .max(500)
+    .refine((ids) => new Set(ids).size === ids.length, "Danh sách người chia khoản chi bị trùng."),
 });
 
 export const expenseMutationSchema = expenseInputSchema.extend({
@@ -121,18 +125,10 @@ export const publicSessionShareSchema = z.object({
 
 const shareTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Liên kết chia sẻ không hợp lệ.");
 
-export const publicShareRequestSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("read"),
-    token: shareTokenSchema,
-  }).strict(),
-  z.object({
-    action: z.literal("confirm"),
-    token: shareTokenSchema,
-    payment_id: z.string().uuid("Mã khoản thanh toán không hợp lệ."),
-    paid: z.boolean(),
-  }).strict(),
-]);
+export const publicShareRequestSchema = z.object({
+  action: z.literal("read"),
+  token: shareTokenSchema,
+}).strict();
 
 export type MemberInput = z.infer<typeof memberInputSchema>;
 export type SessionInput = z.infer<typeof sessionInputSchema>;

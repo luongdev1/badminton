@@ -24,6 +24,98 @@ type TableShape<Row, Insert, Update = Partial<Insert>> = {
 export type Database = {
   public: {
     Tables: {
+      teams: TableShape<
+        TimestampFields & {
+          id: string;
+          name: string;
+          slug: string;
+          status: "active" | "locked";
+        },
+        Partial<TimestampFields> & {
+          id?: string;
+          name: string;
+          slug: string;
+          status?: "active" | "locked";
+        }
+      >;
+      app_users: TableShape<
+        TimestampFields & {
+          id: string;
+          username: string;
+          password_hash: string;
+          platform_role: "user" | "super_admin";
+          status: "active" | "disabled";
+        },
+        Partial<TimestampFields> & {
+          id?: string;
+          username: string;
+          password_hash: string;
+          platform_role?: "user" | "super_admin";
+          status?: "active" | "disabled";
+        }
+      >;
+      team_memberships: TableShape<
+        {
+          user_id: string;
+          team_id: string;
+          role: "team_admin";
+          status: "active" | "revoked";
+          created_by: string | null;
+          created_at: string;
+          revoked_at: string | null;
+        },
+        {
+          user_id: string;
+          team_id: string;
+          role?: "team_admin";
+          status?: "active" | "revoked";
+          created_by?: string | null;
+          created_at?: string;
+          revoked_at?: string | null;
+        }
+      >;
+      app_auth_sessions: TableShape<
+        {
+          id: string;
+          token_hash: string;
+          user_id: string;
+          active_team_id: string | null;
+          expires_at: string;
+          revoked_at: string | null;
+          created_at: string;
+          last_seen_at: string;
+        },
+        {
+          id?: string;
+          token_hash: string;
+          user_id: string;
+          active_team_id?: string | null;
+          expires_at: string;
+          revoked_at?: string | null;
+          created_at?: string;
+          last_seen_at?: string;
+        }
+      >;
+      audit_logs: TableShape<
+        {
+          id: string;
+          actor_app_user_id: string | null;
+          team_id: string | null;
+          action: string;
+          target_type: string;
+          target_id: string | null;
+          created_at: string;
+        },
+        {
+          id?: string;
+          actor_app_user_id?: string | null;
+          team_id?: string | null;
+          action: string;
+          target_type: string;
+          target_id?: string | null;
+          created_at?: string;
+        }
+      >;
       team_settings: TableShape<
         TimestampFields & {
           id: string;
@@ -72,6 +164,7 @@ export type Database = {
         TimestampFields & {
           id: string;
           team_id: string;
+          venue_id: string;
           title: string;
           session_date: string;
           starts_at: string;
@@ -86,6 +179,7 @@ export type Database = {
         Partial<TimestampFields> & {
           id?: string;
           team_id: string;
+          venue_id?: string;
           title: string;
           session_date: string;
           starts_at: string;
@@ -127,6 +221,7 @@ export type Database = {
           category: "court" | "shuttlecock" | "equipment" | "other";
           amount_vnd: number;
           incurred_at: string;
+          allocation_mode: "equal" | "custom";
         },
         {
           id?: string;
@@ -136,8 +231,70 @@ export type Database = {
           category?: "court" | "shuttlecock" | "equipment" | "other";
           amount_vnd: number;
           incurred_at?: string;
+          allocation_mode?: "equal" | "custom";
           created_at?: string;
           updated_at?: string;
+        }
+      >;
+      team_venues: TableShape<
+        TimestampFields & {
+          id: string;
+          team_id: string;
+          name: string;
+          name_key: string;
+          qr_storage_path: string | null;
+        },
+        Partial<TimestampFields> & {
+          id?: string;
+          team_id: string;
+          name: string;
+          qr_storage_path?: string | null;
+        }
+      >;
+      session_expense_allocations: TableShape<
+        {
+          team_id: string;
+          session_id: string;
+          expense_id: string;
+          member_id: string;
+          amount_vnd: number;
+          created_at: string;
+        },
+        {
+          team_id: string;
+          session_id: string;
+          expense_id: string;
+          member_id: string;
+          amount_vnd: number;
+          created_at?: string;
+        }
+      >;
+      session_expense_allocation_audit_logs: TableShape<
+        {
+          id: string;
+          team_id: string;
+          session_id: string;
+          expense_id: string | null;
+          actor_app_user_id: string | null;
+          event_type: "legacy_backfill" | "created" | "updated" | "deleted";
+          description: string;
+          amount_vnd: number;
+          allocation_mode: "equal" | "custom";
+          allocations: Json;
+          created_at: string;
+        },
+        {
+          id?: string;
+          team_id: string;
+          session_id: string;
+          expense_id?: string | null;
+          actor_app_user_id?: string | null;
+          event_type: "legacy_backfill" | "created" | "updated" | "deleted";
+          description: string;
+          amount_vnd: number;
+          allocation_mode: "equal" | "custom";
+          allocations: Json;
+          created_at?: string;
         }
       >;
       payments: TableShape<
@@ -196,6 +353,87 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      bootstrap_initial_super_admin: {
+        Args: {
+          p_super_admin_user_id: string;
+          p_super_admin_username: string;
+          p_super_admin_password_hash: string;
+          p_legacy_team_id: string | null;
+          p_legacy_username: string | null;
+          p_legacy_password_hash: string | null;
+        };
+        Returns: undefined;
+      };
+      system_create_team_with_admin: {
+        Args: {
+          p_actor_user_id: string;
+          p_team_id: string;
+          p_team_name: string;
+          p_team_slug: string;
+          p_user_id: string;
+          p_username: string;
+          p_password_hash: string;
+        };
+        Returns: Json;
+      };
+      system_update_team: {
+        Args: { p_actor_user_id: string; p_team_id: string; p_name: string; p_status: string };
+        Returns: undefined;
+      };
+      system_create_team_admin: {
+        Args: {
+          p_actor_user_id: string;
+          p_team_id: string;
+          p_user_id: string;
+          p_username: string;
+          p_password_hash: string;
+        };
+        Returns: undefined;
+      };
+      system_grant_team_membership: {
+        Args: { p_actor_user_id: string; p_team_id: string; p_user_id: string };
+        Returns: undefined;
+      };
+      system_reset_team_admin_password: {
+        Args: { p_actor_user_id: string; p_team_id: string; p_user_id: string; p_password_hash: string };
+        Returns: undefined;
+      };
+      system_revoke_team_membership: {
+        Args: { p_actor_user_id: string; p_team_id: string; p_user_id: string };
+        Returns: undefined;
+      };
+      system_set_app_user_status: {
+        Args: { p_actor_user_id: string; p_user_id: string; p_status: string };
+        Returns: undefined;
+      };
+      system_revoke_user_sessions: {
+        Args: { p_actor_user_id: string; p_user_id: string };
+        Returns: undefined;
+      };
+      save_session_expense: {
+        Args: {
+          p_team_id: string;
+          p_session_id: string;
+          p_expense_id: string | null;
+          p_description: string;
+          p_category: string;
+          p_amount_vnd: number;
+          p_member_ids: string[];
+          p_confirm_paid_rebalance: boolean;
+          p_actor_app_user_id: string | null;
+        };
+        Returns: Json;
+      };
+      delete_session_expense: {
+        Args: {
+          p_team_id: string;
+          p_session_id: string;
+          p_expense_id: string;
+          p_confirm_paid_rebalance: boolean;
+          p_actor_app_user_id: string | null;
+        };
+        Returns: Json;
+      };
       consume_admin_login_attempt: {
         Args: { p_key_hash: string };
         Returns: Json;

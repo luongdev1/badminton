@@ -6,9 +6,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { ADMIN_SESSION_COOKIE, verifyAdminSessionToken } from "@/lib/admin-session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireDatabaseTeamAdmin } from "@/lib/app-auth";
 
 export type AdminContext = {
   supabase: SupabaseClient<Database>;
+  userId: string | null;
+  role: "team_admin" | "legacy_admin";
   team: {
     id: string;
     team_name: string;
@@ -26,8 +29,25 @@ export type AdminContext = {
 
 export async function requireAdminContext(): Promise<AdminContext> {
   const cookieStore = await cookies();
-  const sessionIsValid = await verifyAdminSessionToken(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
-  if (!sessionIsValid) redirect("/login");
+  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  if (!token) redirect("/login");
+
+  const databaseIdentity = await requireDatabaseTeamAdmin();
+  if (databaseIdentity) {
+    const { supabase, activeTeam, user } = databaseIdentity;
+    const { data: team, error: teamError } = await supabase
+      .from("team_settings")
+      .select("*")
+      .eq("id", activeTeam.team_id)
+      .maybeSingle();
+
+    if (teamError) throw new Error(`Could not load the administrator team: ${teamError.message}`);
+    if (!team) redirect("/login");
+    return { supabase, team, userId: user.id, role: "team_admin" };
+  }
+
+  if (/^[A-Za-z0-9_-]{43}$/.test(token)) redirect("/login");
+  if (!await verifyAdminSessionToken(token)) redirect("/login");
 
   const supabase = createSupabaseAdminClient();
   const { data: teams, error: teamError } = await supabase
@@ -47,5 +67,5 @@ export async function requireAdminContext(): Promise<AdminContext> {
     redirect("/admin/setup");
   }
 
-  return { supabase, team };
+  return { supabase, team, userId: null, role: "legacy_admin" };
 }

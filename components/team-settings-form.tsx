@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Landmark, ShieldCheck } from "lucide-react";
 import { updateTeamSettings } from "@/app/settings/actions";
 import { BankPaymentCard } from "@/components/bank-payment-card";
@@ -68,6 +69,7 @@ export function TeamSettingsForm({ settings, qrImageUrl }: { settings: SettingsF
   return (
     <>
       <PageHeading eyebrow="Tùy chỉnh đội" title="Cài đặt thanh toán" description="Thông tin đội, tài khoản nhận tiền và ảnh QR dùng chung được lưu trong Supabase." />
+      <Link href="/settings/venues" className="mb-5 inline-flex min-h-10 items-center rounded-xl border border-line bg-white px-4 text-sm font-semibold text-ink hover:border-brand hover:text-brand">Quản lý QR theo địa điểm</Link>
       {message && <div role={isError ? "alert" : "status"} className={`mb-5 rounded-xl px-4 py-3 text-sm ${isError ? "bg-rose-50 text-rose-800" : "bg-emerald-50 text-emerald-800"}`}>{message}</div>}
       <form onSubmit={submit} className="space-y-5">
         <Card className="p-5 sm:p-7">

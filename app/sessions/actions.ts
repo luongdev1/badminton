@@ -5,6 +5,7 @@ import { requireAdminContext } from "@/lib/supabase/admin-context";
 import { expenseIdSchema, expenseMutationSchema, sessionInputSchema } from "@/lib/validation";
 import { createPublicShareToken, hashPublicShareToken } from "@/lib/public-share-token";
 import { sessionStatusAfterSave } from "@/lib/session-lifecycle";
+import { getOrCreateTeamVenue } from "@/lib/supabase/venues";
 import type { ActionResult } from "@/app/members/actions";
 
 export type SessionSaveResult =
@@ -41,6 +42,15 @@ export async function saveSession(input: unknown): Promise<SessionSaveResult> {
 
   const { supabase, team } = await requireAdminContext();
   const { member_ids: memberIds, id, confirm_paid_rebalance: confirmPaidRebalance, ...sessionInput } = parsed.data;
+  let venueId: string;
+  try {
+    venueId = await getOrCreateTeamVenue(supabase, team.id, sessionInput.venue);
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Không thể kiểm tra địa điểm/sân.",
+    };
+  }
   const todayInVietnam = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh",
     year: "numeric",
@@ -111,6 +121,7 @@ export async function saveSession(input: unknown): Promise<SessionSaveResult> {
       .update({
         ...sessionInput,
         team_id: team.id,
+        venue_id: venueId,
         status,
         fee_per_member_vnd: sessionInput.fee_per_member_vnd,
         court_details: sessionInput.court_details || null,
@@ -129,6 +140,7 @@ export async function saveSession(input: unknown): Promise<SessionSaveResult> {
       .insert({
         ...sessionInput,
         team_id: team.id,
+        venue_id: venueId,
         status,
         fee_per_member_vnd: sessionInput.fee_per_member_vnd,
         court_details: sessionInput.court_details || null,
@@ -163,8 +175,23 @@ export async function saveSession(input: unknown): Promise<SessionSaveResult> {
     }
   }
 
+  const rejoinedParticipantIds = existingParticipants
+    .filter((participant) => participant.status === "declined" && selectedIds.has(participant.member_id))
+    .map((participant) => participant.id);
+  if (rejoinedParticipantIds.length) {
+    const { error } = await supabase
+      .from("session_participants")
+      .update({ status: "confirmed", fee_snapshot_vnd: sessionInput.fee_per_member_vnd })
+      .eq("team_id", team.id)
+      .eq("session_id", sessionId)
+      .in("id", rejoinedParticipantIds);
+    if (error) {
+      return { ok: false, message: `Buổi đánh đã được lưu nhưng chưa thể khôi phục thành viên: ${error.message}` };
+    }
+  }
+
   const deselectedIds = existingParticipants
-    .filter((participant) => !selectedIds.has(participant.member_id) && ["invited", "confirmed"].includes(participant.status))
+    .filter((participant) => !selectedIds.has(participant.member_id) && participant.status !== "declined")
     .map((participant) => participant.id);
   if (deselectedIds.length) {
     const { error } = await supabase
@@ -224,59 +251,38 @@ export async function createSessionExpense(input: unknown): Promise<ExpenseSaveR
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Khoản chi không hợp lệ." };
   }
 
-  const { supabase, team } = await requireAdminContext();
-  const { session_id: sessionId, id, confirm_paid_rebalance: confirmPaidRebalance, ...expense } = parsed.data;
-  const session = await supabase
-    .from("sessions")
-    .select("id")
-    .eq("team_id", team.id)
-    .eq("id", sessionId)
-    .maybeSingle();
-
-  if (session.error) return { ok: false, message: `Không thể kiểm tra buổi đánh: ${session.error.message}` };
-  if (!session.data) return { ok: false, message: "Không tìm thấy buổi đánh." };
-
-  let amountChanged = !id;
-  if (id) {
-    const { data: existingExpense, error: expenseReadError } = await supabase
-      .from("session_expenses")
-      .select("amount_vnd")
-      .eq("id", id)
-      .eq("session_id", sessionId)
-      .eq("team_id", team.id)
-      .maybeSingle();
-    if (expenseReadError) return { ok: false, message: `Không thể kiểm tra khoản chi: ${expenseReadError.message}` };
-    if (!existingExpense) return { ok: false, message: "Không tìm thấy khoản chi cần cập nhật." };
-    amountChanged = existingExpense.amount_vnd !== expense.amount_vnd;
-  }
-
-  if (amountChanged) {
-    const { data: paidPayment, error: paymentReadError } = await supabase
-      .from("payments")
-      .select("id")
-      .eq("team_id", team.id)
-      .eq("session_id", sessionId)
-      .eq("status", "paid")
-      .limit(1)
-      .maybeSingle();
-    if (paymentReadError) return { ok: false, message: `Không thể kiểm tra khoản đã thu: ${paymentReadError.message}` };
-    if (paidPayment && !confirmPaidRebalance) {
-      return {
-        ok: false,
-        requiresConfirmation: true,
-        message: "Thay đổi chi phí sẽ tính lại khoản phải trả. Khoản đã xác nhận và trạng thái thanh toán sẽ được giữ nguyên; nếu đã thu vượt mức mới, không tự hoàn tiền.",
-      };
-    }
-  }
-
-  const query = id
-    ? supabase.from("session_expenses").update(expense).eq("id", id).eq("session_id", sessionId).eq("team_id", team.id)
-    : supabase.from("session_expenses").insert({ ...expense, session_id: sessionId, team_id: team.id });
-  const { data, error } = await query.select("id").maybeSingle();
+  const { supabase, team, userId } = await requireAdminContext();
+  const { data, error } = await supabase.rpc("save_session_expense", {
+    p_team_id: team.id,
+    p_session_id: parsed.data.session_id,
+    p_expense_id: parsed.data.id ?? null,
+    p_description: parsed.data.description,
+    p_category: parsed.data.category,
+    p_amount_vnd: parsed.data.amount_vnd,
+    p_member_ids: parsed.data.participant_ids,
+    p_confirm_paid_rebalance: parsed.data.confirm_paid_rebalance ?? false,
+    p_actor_app_user_id: userId,
+  });
 
   if (error) return { ok: false, message: `Không thể lưu khoản chi: ${error.message}` };
-  if (!data) return { ok: false, message: "Không tìm thấy khoản chi cần cập nhật." };
-  return { ok: true, data: { id: data.id } };
+  const result = z.object({
+    ok: z.boolean(),
+    code: z.string().optional(),
+    message: z.string().optional(),
+    expense_id: z.string().uuid().optional(),
+  }).safeParse(data);
+  if (!result.success) return { ok: false, message: "Phản hồi lưu khoản chi không hợp lệ." };
+  if (result.data.code === "confirmation_required") {
+    return {
+      ok: false,
+      requiresConfirmation: true,
+      message: result.data.message ?? "Thay đổi sẽ tính lại khoản phải trả nhưng giữ nguyên lịch sử thu.",
+    };
+  }
+  if (!result.data.ok || !result.data.expense_id) {
+    return { ok: false, message: expenseErrorMessage(result.data.code) };
+  }
+  return { ok: true, data: { id: result.data.expense_id } };
 }
 
 export async function deleteSessionExpense(input: unknown): Promise<ExpenseDeleteResult> {
@@ -287,34 +293,40 @@ export async function deleteSessionExpense(input: unknown): Promise<ExpenseDelet
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Khoản chi không hợp lệ." };
   }
 
-  const { supabase, team } = await requireAdminContext();
-  const { data: paidPayment, error: paymentReadError } = await supabase
-    .from("payments")
-    .select("id")
-    .eq("team_id", team.id)
-    .eq("session_id", parsed.data.session_id)
-    .eq("status", "paid")
-    .limit(1)
-    .maybeSingle();
-  if (paymentReadError) return { ok: false, message: `Không thể kiểm tra khoản đã thu: ${paymentReadError.message}` };
-  if (paidPayment && !parsed.data.confirm_paid_rebalance) {
+  const { supabase, team, userId } = await requireAdminContext();
+  const { data, error } = await supabase.rpc("delete_session_expense", {
+    p_team_id: team.id,
+    p_session_id: parsed.data.session_id,
+    p_expense_id: parsed.data.expense_id,
+    p_confirm_paid_rebalance: parsed.data.confirm_paid_rebalance ?? false,
+    p_actor_app_user_id: userId,
+  });
+
+  if (error) return { ok: false, message: `Không thể xóa khoản chi: ${error.message}` };
+  const result = z.object({
+    ok: z.boolean(),
+    code: z.string().optional(),
+    message: z.string().optional(),
+  }).safeParse(data);
+  if (!result.success) return { ok: false, message: "Phản hồi xóa khoản chi không hợp lệ." };
+  if (result.data.code === "confirmation_required") {
     return {
       ok: false,
       requiresConfirmation: true,
-      message: "Xóa khoản chi sẽ tính lại khoản phải trả. Khoản đã xác nhận và trạng thái thanh toán sẽ được giữ nguyên; nếu đã thu vượt mức mới, không tự hoàn tiền.",
+      message: result.data.message ?? "Xóa khoản chi sẽ tính lại khoản phải trả nhưng giữ nguyên lịch sử thu.",
     };
   }
-
-  const { data, error } = await supabase
-    .from("session_expenses")
-    .delete()
-    .eq("team_id", team.id)
-    .eq("session_id", parsed.data.session_id)
-    .eq("id", parsed.data.expense_id)
-    .select("id")
-    .maybeSingle();
-
-  if (error) return { ok: false, message: "Không thể xóa khoản chi." };
-  if (!data) return { ok: false, message: "Không tìm thấy khoản chi cần xóa." };
+  if (!result.data.ok) return { ok: false, message: expenseErrorMessage(result.data.code) };
   return { ok: true, data: undefined };
+}
+
+function expenseErrorMessage(code?: string) {
+  switch (code) {
+    case "session_not_found": return "Không tìm thấy buổi đánh.";
+    case "expense_not_found": return "Không tìm thấy khoản chi.";
+    case "invalid_participants": return "Một hoặc nhiều thành viên không còn tham gia buổi đánh này.";
+    case "duplicate_members": return "Danh sách người chia khoản chi bị trùng.";
+    case "invalid_expense": return "Thông tin khoản chi không hợp lệ.";
+    default: return "Không thể lưu thay đổi khoản chi.";
+  }
 }

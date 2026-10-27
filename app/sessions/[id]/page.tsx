@@ -16,10 +16,11 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
   const { session, participants, expenses, expectedVnd, collectedVnd, outstandingVnd, expensesVnd, unallocatedVnd } = detail;
   const activeParticipants = participants.filter((participant) => participant.status !== "declined");
   const supabase = createSupabasePublicServerClient();
-  const qrImageUrl = settings.qr_storage_path
-    ? settings.qr_storage_path.startsWith("https://")
-      ? settings.qr_storage_path
-      : supabase.storage.from("team-bank-qr").getPublicUrl(settings.qr_storage_path).data.publicUrl
+  const qrStoragePath = detail.venueQrStoragePath ?? settings.qr_storage_path;
+  const qrImageUrl = qrStoragePath
+    ? qrStoragePath.startsWith("https://")
+      ? qrStoragePath
+      : supabase.storage.from("team-bank-qr").getPublicUrl(qrStoragePath).data.publicUrl
     : null;
 
   return (
@@ -68,7 +69,16 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
         </Card>
       </section>
 
-      <ExpenseManager sessionId={session.id} initialExpenses={expenses} hasConfirmedPayments={detail.hasConfirmedPayments} />
+      <ExpenseManager
+        sessionId={session.id}
+        initialExpenses={expenses}
+        participants={activeParticipants.map((participant) => ({
+          member_id: participant.member_id,
+          member_name: participant.member_name_snapshot,
+        }))}
+        allocationHistory={detail.expenseAllocationHistory}
+        hasConfirmedPayments={detail.hasConfirmedPayments}
+      />
     </>
   );
 }

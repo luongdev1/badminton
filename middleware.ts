@@ -18,7 +18,8 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
-  if (!await verifyAdminSessionToken(token)) return redirectToLogin(request);
+  const isDatabaseSessionToken = token !== undefined && /^[A-Za-z0-9_-]{43}$/.test(token);
+  if (!isDatabaseSessionToken && !await verifyAdminSessionToken(token)) return redirectToLogin(request);
 
   const response = NextResponse.next({ request });
   response.headers.set("Cache-Control", "private, no-store");

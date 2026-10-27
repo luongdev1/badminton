@@ -10,6 +10,12 @@ export type MemberRow = Database["public"]["Tables"]["members"]["Row"];
 export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 export type ExpenseRow = Database["public"]["Tables"]["session_expenses"]["Row"];
 export type PaymentRow = Database["public"]["Tables"]["payments"]["Row"];
+export type ExpenseAllocation = {
+  member_id: string;
+  member_name: string;
+  amount_vnd: number;
+};
+export type SessionExpenseDetail = ExpenseRow & { allocations: ExpenseAllocation[] };
 
 export type SessionSummary = SessionRow & {
   attendee_count: number;
@@ -168,16 +174,31 @@ export async function getSessionDetail(sessionId: string) {
   if (sessionError) throw new Error(`Could not load session: ${sessionError.message}`);
   if (!session) return null;
 
-  const [participantsResult, expensesResult, paymentsResult] = await Promise.all([
+  const [participantsResult, expensesResult, paymentsResult, venueResult, allocationsResult, allocationAuditResult] = await Promise.all([
     supabase.from("session_participants").select("*").eq("team_id", team.id).eq("session_id", sessionId).order("created_at"),
     supabase.from("session_expenses").select("*").eq("team_id", team.id).eq("session_id", sessionId).order("incurred_at", { ascending: false }),
     supabase.from("payments").select("member_id,amount_vnd,amount_due_vnd,status").eq("team_id", team.id).eq("session_id", sessionId),
+    supabase.from("team_venues").select("qr_storage_path").eq("team_id", team.id).eq("id", session.venue_id).maybeSingle(),
+    supabase.from("session_expense_allocations").select("expense_id,member_id,amount_vnd").eq("team_id", team.id).eq("session_id", sessionId),
+    supabase.from("session_expense_allocation_audit_logs").select("id,expense_id,event_type,description,amount_vnd,allocation_mode,allocations,created_at").eq("team_id", team.id).eq("session_id", sessionId).order("created_at", { ascending: false }).limit(50),
   ]);
 
-  const error = participantsResult.error ?? expensesResult.error ?? paymentsResult.error;
+  const error = participantsResult.error ?? expensesResult.error ?? paymentsResult.error ?? venueResult.error ?? allocationsResult.error ?? allocationAuditResult.error;
   if (error) throw new Error(`Could not load session details: ${error.message}`);
 
   const payments = new Map((paymentsResult.data ?? []).map((payment) => [payment.member_id, payment]));
+  const participantsById = new Map((participantsResult.data ?? []).map((participant) => [participant.member_id, participant]));
+  const allocationsByExpense = new Map<string, ExpenseAllocation[]>();
+  for (const allocation of allocationsResult.data ?? []) {
+    const participant = participantsById.get(allocation.member_id);
+    const allocations = allocationsByExpense.get(allocation.expense_id) ?? [];
+    allocations.push({
+      member_id: allocation.member_id,
+      member_name: participant?.member_name_snapshot ?? "Thành viên đã ẩn",
+      amount_vnd: allocation.amount_vnd,
+    });
+    allocationsByExpense.set(allocation.expense_id, allocations);
+  }
   const participants = (participantsResult.data ?? []).map((participant) => {
     const payment = payments.get(participant.member_id);
     return {
@@ -190,8 +211,13 @@ export async function getSessionDetail(sessionId: string) {
 
   return {
     session,
+    venueQrStoragePath: venueResult.data?.qr_storage_path ?? null,
     participants,
-    expenses: expensesResult.data ?? [],
+    expenses: (expensesResult.data ?? []).map((expense) => ({
+      ...expense,
+      allocations: allocationsByExpense.get(expense.id) ?? [],
+    })),
+    expenseAllocationHistory: allocationAuditResult.data ?? [],
     expectedVnd: [...payments.values()].reduce((total, payment) => total + payment.amount_due_vnd, 0),
     collectedVnd: [...payments.values()].reduce((total, payment) => total + confirmedPaymentAmount(payment), 0),
     outstandingVnd: [...payments.values()].reduce((total, payment) => total + remainingPaymentDue(payment), 0),

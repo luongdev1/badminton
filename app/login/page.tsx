@@ -30,7 +30,7 @@ export default function LoginPage() {
           setMessage(result.message);
           return;
         }
-        router.replace("/admin");
+        router.replace(result.redirectTo);
         router.refresh();
       } catch {
         setMessage("Không thể đăng nhập lúc này. Kiểm tra cấu hình server và thử lại.");

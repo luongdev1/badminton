@@ -16,7 +16,6 @@ export function PublicSessionShare({ initialToken }: { initialToken?: string }) 
   const [token, setToken] = useState<string | null>(null);
   const [share, setShare] = useState<ShareData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState("");
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -91,40 +90,6 @@ export function PublicSessionShare({ initialToken }: { initialToken?: string }) 
     return () => window.clearInterval(interval);
   }, [initialToken, loadShare]);
 
-  async function togglePayment(paymentId: string, paid: boolean) {
-    if (!token) return;
-    setPendingIds((previous) => new Set(previous).add(paymentId));
-    setMessage("");
-    try {
-      const response = await fetch("/api/public-share", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ action: "confirm", token, payment_id: paymentId, paid }),
-      });
-      const result: unknown = await response.json();
-      if (!response.ok) {
-        const error = result && typeof result === "object" && "error" in result && typeof result.error === "string"
-          ? result.error
-          : "Không thể cập nhật trạng thái thanh toán.";
-        setMessage(error);
-        return;
-      }
-      await loadShare(token);
-      setMessage(paid
-        ? "Đã ghi nhận xác nhận thanh toán thủ công."
-        : "Đã bỏ xác nhận thanh toán.");
-    } catch {
-      setMessage("Lỗi kết nối. Trạng thái chưa được xác nhận; vui lòng thử lại.");
-    } finally {
-      setPendingIds((previous) => {
-        const next = new Set(previous);
-        next.delete(paymentId);
-        return next;
-      });
-    }
-  }
-
   if (loading) {
     return <div className="mx-auto max-w-5xl"><Card className="p-8 text-center text-sm text-muted"><RefreshCw className="mx-auto mb-3 animate-spin text-brand" size={22} />Đang tải thông tin buổi đánh...</Card></div>;
   }
@@ -171,20 +136,20 @@ export function PublicSessionShare({ initialToken }: { initialToken?: string }) 
         </div>
         {participants.length
           ? <div className="divide-y divide-line px-4 sm:px-5">{participants.map((participant) => {
-            const canToggle = participant.payment_status === "pending" || participant.payment_status === "paid" || participant.payment_status === "refunded";
-            const isPaid = participant.payment_status === "paid";
+            const statusLabel = participant.payment_status === "paid"
+              ? "Đã ghi nhận thanh toán"
+              : participant.payment_status === "waived"
+                ? "Miễn thu"
+                : participant.payment_status === "refunded"
+                  ? "Đã hoàn"
+                  : "Chưa ghi nhận";
             return <div key={participant.payment_id} className="flex items-center gap-3 py-4">
               <span className="min-w-0 flex-1">
                 <strong className="block truncate text-sm text-ink">{participant.name}</strong>
                 <small className="mt-1 block text-xs text-muted">Cần chuyển: {money(participant.amount_to_pay_vnd)}</small>
-                {participant.paid_at && isPaid && <small className="mt-1 block text-xs text-emerald-700">Xác nhận lúc {new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(participant.paid_at))}</small>}
+                {participant.paid_at && participant.payment_status === "paid" && <small className="mt-1 block text-xs text-emerald-700">Xác nhận lúc {new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(participant.paid_at))}</small>}
               </span>
-              {canToggle
-                ? <label className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-semibold ${isPaid ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"} ${pendingIds.has(participant.payment_id) ? "opacity-50" : ""}`}>
-                  <input type="checkbox" checked={isPaid} disabled={pendingIds.has(participant.payment_id)} onChange={(event) => void togglePayment(participant.payment_id, event.target.checked)} className="h-4 w-4 accent-emerald-700" aria-label={`${isPaid ? "Bỏ xác nhận" : "Xác nhận"} thanh toán của ${participant.name}`} />
-                  {pendingIds.has(participant.payment_id) ? "Đang lưu..." : isPaid ? "Đã thanh toán" : "Chưa thanh toán"}
-                </label>
-                : <span className="rounded-xl bg-slate-100 px-3 py-3 text-xs font-semibold text-slate-600">{participant.payment_status === "waived" ? "Miễn thu" : "Đã hoàn"}</span>}
+              <span className={`shrink-0 rounded-xl px-3 py-3 text-xs font-semibold ${participant.payment_status === "paid" ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{statusLabel}</span>
             </div>;
           })}</div>
           : <p className="p-6 text-sm text-muted">Chưa có thành viên tham gia.</p>}
@@ -192,7 +157,7 @@ export function PublicSessionShare({ initialToken }: { initialToken?: string }) 
     </div>
 
     <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-      Trạng thái thanh toán do người có link tự xác nhận thủ công, không được đối chiếu với ngân hàng và không xác định danh tính người tick. Dữ liệu được làm mới tự động khoảng mỗi 15 giây.
+      Link này chỉ có quyền xem. Chỉ quản trị viên mới được cập nhật trạng thái thanh toán; thông tin không được đối chiếu tự động với ngân hàng. Dữ liệu làm mới khoảng mỗi 15 giây.
     </p>
   </div>;
 }
