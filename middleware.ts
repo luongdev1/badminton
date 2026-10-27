@@ -1,61 +1,38 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import type { Database } from "@/lib/supabase/database.types";
+import { ADMIN_SESSION_COOKIE, verifyAdminSessionToken } from "./lib/admin-session";
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  if (pathname === "/share" || pathname === "/api/public-share") {
-    const response = NextResponse.next({ request });
-    response.headers.set("Cache-Control", "private, no-store");
-    return response;
-  }
-  if (pathname.startsWith("/share/")) {
-    const response = NextResponse.next({ request });
-    response.headers.set("Cache-Control", "private, no-store");
-    return response;
-  }
   if (pathname === "/admin/login" || pathname === "/auth/callback") {
-    return NextResponse.next({ request });
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (pathname === "/login") return NextResponse.next({ request });
 
-  if (!url || !publishableKey) {
-    return redirectToLogin(request, "configuration");
+  if (pathname === "/share" || pathname.startsWith("/share/") || pathname === "/api/public-share") {
+    const response = NextResponse.next({ request });
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return response;
   }
 
-  let response = NextResponse.next({ request });
+  const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+  if (!await verifyAdminSessionToken(token)) return redirectToLogin(request);
+
+  const response = NextResponse.next({ request });
   response.headers.set("Cache-Control", "private, no-store");
-  const supabase = createServerClient<Database>(url, publishableKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        response.headers.set("Cache-Control", "private, no-store");
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-      },
-    },
-  });
-
-  const { data, error } = await supabase.auth.getClaims();
-  if (error || !data?.claims?.sub) {
-    return redirectToLogin(request, error ? "connection" : "login", response);
-  }
   return response;
 }
 
-function redirectToLogin(request: NextRequest, reason: string, sourceResponse?: NextResponse) {
-  const loginUrl = new URL("/admin/login", request.url);
-  loginUrl.searchParams.set("error", reason);
+function redirectToLogin(request: NextRequest) {
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("error", "login");
   const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
   if (next !== "/") loginUrl.searchParams.set("next", next);
   const response = NextResponse.redirect(loginUrl);
   response.headers.set("Cache-Control", "private, no-store");
-  sourceResponse?.cookies.getAll().forEach((cookie) => response.cookies.set(cookie));
+  response.cookies.delete(ADMIN_SESSION_COOKIE);
   return response;
 }
 
