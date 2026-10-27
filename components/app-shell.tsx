@@ -38,11 +38,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             return <Link key={item.href} href={item.href} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition ${active ? "bg-mint text-brand" : "text-slate-600 hover:bg-slate-50 hover:text-ink"}`}><Icon size={19} strokeWidth={1.8} />{item.label}</Link>;
           })}
         </nav>
-        <div className="mt-auto rounded-2xl bg-[#f4f8f5] p-4">
-          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white text-brand shadow-sm"><CircleHelp size={18} /></div>
-          <p className="text-sm font-semibold text-ink">Cần hỗ trợ?</p>
-          <p className="mt-1 text-xs leading-5 text-muted">Mọi dữ liệu hiện tại chỉ dùng để trình diễn.</p>
-        </div>
       </aside>
 
       <div className="lg:pl-64">
