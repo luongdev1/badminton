@@ -33,7 +33,7 @@ yarn build
 
 ## Biến môi trường quản trị
 
-Lấy Supabase URL, publishable key và service-role key trong Supabase Dashboard → **Project Settings → API Keys**. Chỉ URL và publishable key được đặt trong `NEXT_PUBLIC_*`.
+Lấy Supabase URL, publishable key và secret key trong Supabase Dashboard → **Project Settings → API Keys**. Chỉ URL và publishable key được đặt trong `NEXT_PUBLIC_*`. Secret key mới (`sb_secret_...`) được khuyến nghị thay cho legacy `service_role` key; ứng dụng vẫn hỗ trợ biến `SUPABASE_SERVICE_ROLE_KEY` cũ để tương thích.
 
 Tạo hash mật khẩu trong terminal tương tác:
 
@@ -52,13 +52,15 @@ Thiết lập các biến:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
-SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key>
+SUPABASE_SECRET_KEY=<server-only-secret-key>
 ADMIN_USERNAME=<username-quan-tri>
 ADMIN_PASSWORD_HASH=scrypt\$<salt>\$<hash>
 ADMIN_SESSION_SECRET=<chuoi-ngau-nhien-it-nhat-32-ky-tu>
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_PASSWORD_HASH` và `ADMIN_SESSION_SECRET` là secrets phía server. Không đặt chúng trong biến `NEXT_PUBLIC_*`, mã nguồn hoặc Git. Thay `ADMIN_SESSION_SECRET` sẽ vô hiệu hóa mọi phiên quản trị đang tồn tại. Phiên đăng nhập dùng cookie HttpOnly, SameSite Strict và hết hạn sau 8 giờ.
+`SUPABASE_SECRET_KEY` (hoặc legacy `SUPABASE_SERVICE_ROLE_KEY`), `ADMIN_PASSWORD_HASH` và `ADMIN_SESSION_SECRET` là secrets phía server. Không đặt chúng trong biến `NEXT_PUBLIC_*`, mã nguồn hoặc Git. Thay `ADMIN_SESSION_SECRET` sẽ vô hiệu hóa mọi phiên quản trị đang tồn tại. Phiên đăng nhập dùng cookie HttpOnly, SameSite Strict và hết hạn sau 8 giờ.
+
+Nếu đăng nhập hiện thông báo không thể kiểm tra giới hạn đăng nhập, hãy kiểm tra Vercel Runtime Logs: lỗi `PGRST202` thường chỉ ra RPC/migration chưa có trong schema cache hoặc chưa được áp dụng; lỗi quyền/401 thường chỉ ra key server sai, đã thu hồi, hoặc không thuộc project trong `NEXT_PUBLIC_SUPABASE_URL`. Xác nhận migration `20261027010822_shared_admin_auth.sql` đã áp dụng trên đúng project trước khi chạy `npx supabase db push`, sau đó redeploy để server nhận các environment variable mới. Không bỏ qua RPC rate limit để khắc phục lỗi này.
 
 ## Supabase, migration, RLS và Storage
 
@@ -107,7 +109,7 @@ Chủ dự án cần tự cấp quyền Git/Vercel/Supabase. Repo này không t�
 2. Trên **Project Settings → Environment Variables**, đặt các giá trị phù hợp cho Production:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `SUPABASE_SECRET_KEY` (legacy `SUPABASE_SERVICE_ROLE_KEY` remains supported)
    - `ADMIN_USERNAME`
    - `ADMIN_PASSWORD_HASH`
    - `ADMIN_SESSION_SECRET`
